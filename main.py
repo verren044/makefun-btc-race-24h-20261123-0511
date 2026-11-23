@@ -6,18 +6,28 @@ Strategy, in one paragraph: wait until the indicators are warm (121 closes),
 then buy when the latest close breaks above the highest close of the previous
 60 bars while the fast EMA (12) sits above the slow EMA (48) — a level
 breakout in an uptrend. Size is 75% of equity, halved while equity sits more
-than 1% below its peak (drawdown throttle). Exit the whole position when the
-close breaks below the lowest close of the previous 60 bars, or when it falls
-3% below the highest close since entry (trailing stop). No other exits, no
-re-entry cooldown, no profit target: the position rides the trend until the
-market itself says the level broke.
+than 1% below its peak (drawdown throttle). Once in, hold at least 30 bars
+before any exit: the channel-low / trailing-stop exits are the market's own
+levels, but on 1-minute bars noise pullbacks can trip them within a few bars
+of entry, and each whipsaw round trip costs ~26 bps — the minimum hold
+blocks exactly those exits. Exit the whole position when the close breaks
+below the lowest close of the previous 60 bars, or when it falls 3% below
+the highest close since entry (trailing stop). No other exits, no re-entry
+cooldown, no profit target: the position rides the trend until the market
+itself says the level broke.
 
 Why this shape: on the dev window the 24h move is one strong up-leg followed
 by a flat chop. Tight stops and profit targets bled money to fees in testing
 (every extra round trip costs ~26 bps at full size); regime filters that
 demand a confirmed return entered late, near tops. The channel-low exit is
 slow but it is the market's own level, and the drawdown throttle is what
-keeps flat stretches cheap. See BUILD_LOG.md for the variants tested.
+keeps flat stretches cheap. A 60-bar cooldown after a losing exit and a
+wider Donchian window (90) were both tested and rejected — both lowered
+the full-window PnL. The 30-bar minimum hold is the one addition that
+helped: it removes two whipsaw exits, lifts the full-window PnL from
++$12.68 to +$15.61, and the result is flat for any hold in 20–45 bars,
+so it is a plateau, not a tuned spike. See BUILD_LOG.md for the variants
+tested.
 
 Deterministic: no clock, no network, no randomness; the only state is the
 closes seen so far. Two runs on the same data produce identical replies.
@@ -39,6 +49,7 @@ WARMUP_BARS = 121        # closes needed before the first trade (indicators warm
 ENTRY_FRAC_BPS = 7500    # 75% of equity per entry
 TRAIL_BPS = 300          # 3% trailing stop below the peak close since entry
 THROTTLE_BPS = 100       # halve size while equity is >1% below its peak
+MIN_HOLD_BARS = 30       # minimum bars to hold before any exit (blocks noise exits)
 MAX_SLIPPAGE_BPS = 100   # 1% cap on fill vs latest close
 
 
@@ -49,6 +60,7 @@ class Bot:
         self.ema_slow = None
         self.peak_close = 0       # highest close since entry
         self.equity_peak = 0      # highest equity seen
+        self.entry_bar = -1       # closes-count at entry (for the minimum hold)
 
     def _ema_step(self, price):
         n = len(self.closes)
@@ -100,11 +112,13 @@ class Bot:
                         "max_slippage_bps": MAX_SLIPPAGE_BPS,
                     })
                     self.peak_close = close
+                    self.entry_bar = len(self.closes)
         else:
             if close > self.peak_close:
                 self.peak_close = close
+            held = len(self.closes) - self.entry_bar
             trail_hit = close < self.peak_close * (10000 - TRAIL_BPS) // 10000
-            if close < channel_low or trail_hit:
+            if held >= MIN_HOLD_BARS and (close < channel_low or trail_hit):
                 orders.append({
                     "side": "sell",
                     "symbol": SYMBOL,

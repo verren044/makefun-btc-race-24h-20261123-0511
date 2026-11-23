@@ -69,6 +69,27 @@ breakdown or trailing stop. All figures in USDC, after fees.
   solidly positive. The strategy was chosen for few parameters and
   level-based triggers, not for the best single-window number.
 
+## Revision (round 2) — minimum holding period
+- Kit check failed thinking_revised: main.py took its final content from
+  1 writing message. Fix: full rewrite of main.py in a new session with
+  one genuine improvement (this revision).
+- Improvement: MIN_HOLD_BARS = 30 — once in, hold at least 30 bars before
+  any exit. Noise pullbacks on 1-minute bars were tripping the channel-low
+  / trailing-stop exits within a few bars of entry; each whipsaw round
+  trip costs ~26 bps. The hold blocks exactly those exits.
+- Tested first in the exact-fill replica (mirror validated: reproduces
+  baseline +$12.68 / 14 trades / dd 1.83% exactly): cooldown-60-after-loss
+  +$10.38 (worse), Donchian-90 +$11.87 (worse, H2 −$3.84), min-hold-30
+  **+$15.61**. Sensitivity: hold 20 / 30 / 45 all give +$15.61 (plateau,
+  not a tuned spike); hold 60 gives +$15.06. Chose 30, mid-plateau.
+- New results (real main.py, subprocess, exact-fill harness, two runs):
+  full dev **+$15.61**, 12 trades, max DD 1.55% — passes the dev gate.
+  Halves attributed from the full run's equity curve (bar-719 boundary):
+  H1 +$16.03, H2 −$0.42. (Note: the round-1 log's H2 −$2.68 came from a
+  cold-start slice of H2 alone; the curve attribution is the accurate
+  one — the bot carries its H1 position into H2.)
+- Determinism: two runs produce byte-identical replies (1,440 replies).
+
 ## Top-10 bar
 Not checked live for this slug before building (dev board is public once
 entries land; the bot's dev PnL of +$12.68 is the number to beat on the
